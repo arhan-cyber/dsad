@@ -118,12 +118,14 @@ with tab5:
         snap_at_ts = df.head(1)
     snap = snap_at_ts.iloc[0]
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Mid Price", f"{float(snap['mid_price']):.2f}")
-    c2.metric("Spread", f"{float(snap['ask_price_1'] - snap['bid_price_1']):.2f}")
-    c3.metric("PnL", f"{float(snap['profit_and_loss']):.2f}")
+    c2.metric("Best Bid", f"{float(snap['bid_price_1']):.2f}", delta=f"Vol {int(snap['bid_volume_1']) if snap['bid_volume_1'] == snap['bid_volume_1'] else 0}")
+    c3.metric("Best Ask", f"{float(snap['ask_price_1']):.2f}", delta=f"Vol {int(snap['ask_volume_1']) if snap['ask_volume_1'] == snap['ask_volume_1'] else 0}")
+    c4.metric("Spread", f"{float(snap['ask_price_1'] - snap['bid_price_1']):.2f}")
+    c5.metric("PnL", f"{float(snap['profit_and_loss']):.2f}")
     l1_imb = snap["l1_imbalance"] if "l1_imbalance" in snap_at_ts.columns else 0.0
-    c4.metric("L1 Imbalance", f"{float(l1_imb):.3f}")
+    st.caption(f"L1 Imbalance: {float(l1_imb):.3f}")
 
     st.write(
         f"Book snapshot at t={int(snap['timestamp'])}: "
