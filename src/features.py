@@ -91,17 +91,23 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_trade_flow_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    out["trade_buy_qty_20"] = 0.0
-    out["trade_sell_qty_20"] = 0.0
-    out["trade_ofi_20"] = 0.0
-    out["trade_participation_20"] = 0.0
+    flow_cols = ["trade_buy_qty_20", "trade_sell_qty_20", "trade_ofi_20", "trade_participation_20"]
+    # Prevent merge suffix collisions if function is called repeatedly.
+    out = out.drop(columns=[c for c in flow_cols if c in out.columns], errors="ignore")
+
+    def _with_zero_flow(frame: pd.DataFrame) -> pd.DataFrame:
+        result = frame.copy()
+        for col in flow_cols:
+            result[col] = 0.0
+        return result
+
     if trades is None or trades.empty:
-        return out
+        return _with_zero_flow(out)
 
     t = trades.copy()
     t = t[t["symbol"].astype(str) == str(out["product"].iloc[0])].copy()
     if t.empty:
-        return out
+        return _with_zero_flow(out)
     t["timestamp"] = pd.to_numeric(t["timestamp"], errors="coerce")
     t["quantity"] = pd.to_numeric(t["quantity"], errors="coerce").fillna(0.0)
     t["buy_qty"] = np.where(t["side"] == "BUY", t["quantity"], 0.0)
@@ -120,7 +126,7 @@ def add_trade_flow_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFr
         on="timestamp",
         direction="backward",
     )
-    for col in ["trade_buy_qty_20", "trade_sell_qty_20", "trade_ofi_20", "trade_participation_20"]:
+    for col in flow_cols:
         merged[col] = merged[col].fillna(0.0)
     return merged.sort_values(["product", "day", "timestamp"]).reset_index(drop=True)
 
