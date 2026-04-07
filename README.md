@@ -4,8 +4,10 @@ Interactive Streamlit app for discovering and ranking alpha candidates from trad
 
 ## What it supports
 
-- CSV ingestion for the schema:
+- `.log`/CSV ingestion for the schema:
   `day,timestamp,product,bid/ask_price_1..3,bid/ask_volume_1..3,mid_price,profit_and_loss`
+- Native support for semicolon-separated snapshots (`;`) and sparse deeper levels
+  (for example level-3 price/volume can be empty).
 - Feature families:
   - Trend (SMA/EMA crossovers, momentum, z-score)
   - Volatility (rolling return volatility)
@@ -26,7 +28,7 @@ pip install -e .[dev]
 streamlit run app.py
 ```
 
-Upload `data/sample_log.csv` to test quickly.
+Upload `data/sample_log.csv` (or your `.log` file) to test quickly.
 
 ## Project structure
 

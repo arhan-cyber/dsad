@@ -27,3 +27,15 @@ def test_end_to_end_scoring():
     assert "fwd_ret_1" in feat_df.columns
     assert not scores.empty
     assert {"feature", "horizon", "ic", "hit_rate", "samples"}.issubset(scores.columns)
+
+
+def test_sparse_depth_and_negative_day_log_rows():
+    sparse_csv = """day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss
+-1;0;TOMATOES;4999;6;4998;19;;;5013;6;5014;19;;;5006.0;0.0
+-1;1;TOMATOES;5000;4;4999;12;;;5012;5;5013;11;;;5006.0;1.0
+"""
+    df = load_csv(io.StringIO(sparse_csv))
+    assert len(df) == 2
+    assert int(df.loc[0, "day"]) == -1
+    assert df["bid_price_3"].isna().all()
+    assert df["ask_volume_3"].isna().all()

@@ -11,9 +11,9 @@ st.set_page_config(page_title="Trading Alpha Visualizer", layout="wide")
 st.title("Trading Alpha Visualizer")
 st.caption("Explore candidate alpha signals and evaluate predictive power across forward horizons.")
 
-uploaded = st.file_uploader("Upload simulation log CSV", type=["csv"])
+uploaded = st.file_uploader("Upload simulation log file (.log or .csv)", type=["log", "csv"])
 if uploaded is None:
-    st.info("Upload a CSV to begin.")
+    st.info("Upload a .log/.csv file to begin.")
     st.stop()
 
 base_df = load_csv(uploaded)
