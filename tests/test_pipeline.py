@@ -1,0 +1,29 @@
+import io
+
+from src.data_loader import load_csv
+from src.features import add_features, default_feature_columns
+from src.scoring import add_forward_returns, score_signals
+
+
+CSV = """day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss
+1;1000;PEARLS;99.8;10;99.7;8;99.6;6;100.2;9;100.3;7;100.4;5;100.0;0
+1;1001;PEARLS;99.9;11;99.8;8;99.7;6;100.3;9;100.4;7;100.5;5;100.1;0.3
+1;1002;PEARLS;100.0;10;99.9;9;99.8;7;100.4;8;100.5;6;100.6;5;100.2;0.5
+1;1003;PEARLS;100.1;12;100.0;9;99.9;7;100.5;8;100.6;6;100.7;5;100.3;0.7
+1;1004;PEARLS;100.0;10;99.9;8;99.8;7;100.4;9;100.5;7;100.6;5;100.2;0.4
+1;1005;PEARLS;99.9;9;99.8;8;99.7;7;100.3;10;100.4;8;100.5;6;100.1;0.2
+"""
+
+
+def test_end_to_end_scoring():
+    df = load_csv(io.StringIO(CSV))
+    feat_df = add_features(df)
+    feat_df = add_forward_returns(feat_df, [1, 2])
+    feature_cols = default_feature_columns(feat_df)
+    scores = score_signals(feat_df, feature_cols, [1, 2])
+
+    assert len(df) == 6
+    assert "l1_imbalance" in feat_df.columns
+    assert "fwd_ret_1" in feat_df.columns
+    assert not scores.empty
+    assert {"feature", "horizon", "ic", "hit_rate", "samples"}.issubset(scores.columns)
