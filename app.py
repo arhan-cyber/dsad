@@ -35,47 +35,69 @@ horizons = st.sidebar.multiselect("Forward horizons (ticks)", [1, 5, 10, 20, 50,
 product = st.sidebar.selectbox("Product", products)
 
 df = base_df[base_df["product"] == product].copy()
+ts_values = sorted(df["timestamp"].dropna().astype(int).unique().tolist())
+default_ts = ts_values[0]
+global_ts = st.sidebar.select_slider("Global timestamp", options=ts_values, value=default_ts, key="global_timestamp")
+global_ts_range = st.sidebar.select_slider(
+    "Global timestamp range",
+    options=ts_values,
+    value=(ts_values[0], ts_values[-1]),
+    key="global_timestamp_range",
+)
+df_range = df[(df["timestamp"] >= global_ts_range[0]) & (df["timestamp"] <= global_ts_range[1])].copy()
+if df_range.empty:
+    df_range = df.copy()
+
 df = add_features(df)
 df = add_forward_returns(df, horizons)
+df_range = add_features(df_range)
+df_range = add_forward_returns(df_range, horizons)
 feature_cols = default_feature_columns(df)
 product_trades = trades_df[trades_df["symbol"] == product].copy() if not trades_df.empty else trades_df.copy()
+product_trades_range = (
+    product_trades[
+        (product_trades["timestamp"] >= global_ts_range[0]) & (product_trades["timestamp"] <= global_ts_range[1])
+    ].copy()
+    if not product_trades.empty
+    else product_trades.copy()
+)
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment", "Market Prices"]
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment", "Market Prices", "Volatility"]
 )
 
 with tab1:
     st.subheader("Data Health")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Rows", len(df))
+    col1.metric("Rows (in range)", len(df_range))
     col2.metric("Products", len(products))
-    col3.metric("Null cells", int(df.isna().sum().sum()))
-    st.dataframe(df.isna().mean().sort_values(ascending=False).rename("null_ratio").to_frame())
+    col3.metric("Null cells (in range)", int(df_range.isna().sum().sum()))
+    st.dataframe(df_range.isna().mean().sort_values(ascending=False).rename("null_ratio").to_frame())
 
 with tab2:
     st.subheader("Feature Explorer")
     feature = st.selectbox("Feature", feature_cols, index=0)
-    st.plotly_chart(time_series(df, x="timestamp", y=feature, title=f"{feature} over time"), use_container_width=True)
-    st.plotly_chart(histogram(df, x=feature, title=f"{feature} distribution"), use_container_width=True)
+    st.plotly_chart(time_series(df_range, x="timestamp", y=feature, title=f"{feature} over time"), use_container_width=True)
+    st.plotly_chart(histogram(df_range, x=feature, title=f"{feature} distribution"), use_container_width=True)
     top_corr_cols = feature_cols[: min(20, len(feature_cols))]
-    st.plotly_chart(correlation_heatmap(df, top_corr_cols), use_container_width=True)
+    st.plotly_chart(correlation_heatmap(df_range, top_corr_cols), use_container_width=True)
 
 with tab3:
     st.subheader("Signal Diagnostics")
     feature = st.selectbox("Feature for diagnostics", feature_cols, index=0, key="diag_feature")
     horizon = st.selectbox("Horizon", horizons, index=0, key="diag_h")
     target_col = f"fwd_ret_{horizon}"
-    diag_df = df[[feature, target_col]].dropna()
+    diag_df = df_range[[feature, target_col]].dropna()
     st.plotly_chart(
         scatter(diag_df, x=feature, y=target_col, title=f"{feature} vs {target_col}"),
         use_container_width=True,
     )
-    bucket_df = bucketed_forward_returns(df, feature, horizon)
+    bucket_df = bucketed_forward_returns(df_range, feature, horizon)
     st.bar_chart(bucket_df.set_index("bucket")["avg_fwd_return"])
 
 with tab4:
     st.subheader("Signal Leaderboard")
-    scores = score_signals(df, feature_cols, horizons)
+    scores = score_signals(df_range, feature_cols, horizons)
     st.dataframe(scores, use_container_width=True)
     st.download_button(
         "Download leaderboard CSV",
@@ -86,8 +108,7 @@ with tab4:
 
 with tab5:
     st.subheader("Trades and Point-in-Time Stats")
-    ts_values = sorted(df["timestamp"].dropna().astype(int).unique().tolist())
-    selected_ts = st.select_slider("Timestamp", options=ts_values, value=ts_values[0])
+    selected_ts = global_ts
 
     # Use latest snapshot at or before selected timestamp for stable point-in-time state.
     snap_at_ts = df[df["timestamp"] <= selected_ts].tail(1)
@@ -109,11 +130,11 @@ with tab5:
     )
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df["timestamp"], y=df["mid_price"], mode="lines", name="Mid Price"))
-    if not product_trades.empty:
-        buys = product_trades[product_trades["side"] == "BUY"]
-        sells = product_trades[product_trades["side"] == "SELL"]
-        others = product_trades[product_trades["side"] == "OTHER"]
+    fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price"))
+    if not product_trades_range.empty:
+        buys = product_trades_range[product_trades_range["side"] == "BUY"]
+        sells = product_trades_range[product_trades_range["side"] == "SELL"]
+        others = product_trades_range[product_trades_range["side"] == "OTHER"]
         if not buys.empty:
             fig.add_trace(
                 go.Scatter(
@@ -174,16 +195,16 @@ with tab6:
     show_l3 = st.checkbox("Show level-3 bid/ask", value=False, key="show_l3")
 
     price_fig = go.Figure()
-    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["mid_price"], mode="lines", name="Mid Price"))
-    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_1"], mode="lines", name="Bid L1"))
-    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_1"], mode="lines", name="Ask L1"))
+    price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price"))
+    price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["bid_price_1"], mode="lines", name="Bid L1"))
+    price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ask_price_1"], mode="lines", name="Ask L1"))
 
     if show_l2:
-        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_2"], mode="lines", name="Bid L2"))
-        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_2"], mode="lines", name="Ask L2"))
+        price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["bid_price_2"], mode="lines", name="Bid L2"))
+        price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ask_price_2"], mode="lines", name="Ask L2"))
     if show_l3:
-        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_3"], mode="lines", name="Bid L3"))
-        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_3"], mode="lines", name="Ask L3"))
+        price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["bid_price_3"], mode="lines", name="Bid L3"))
+        price_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ask_price_3"], mode="lines", name="Ask L3"))
 
     price_fig.update_layout(
         title=f"{product} order-book prices over time",
@@ -214,3 +235,30 @@ with tab6:
         )
         depth_fig.update_layout(title=f"{product} depth snapshot @ t={int(row['timestamp'])}", yaxis_title="Volume")
         st.plotly_chart(depth_fig, use_container_width=True)
+
+with tab7:
+    st.subheader("Interactive Volatility")
+    vol_window = st.slider("Volatility rolling window", min_value=5, max_value=200, value=20, step=1, key="vol_window")
+    tmp = df_range[["timestamp", "mid_price"]].copy()
+    tmp["ret_1"] = tmp["mid_price"].pct_change()
+    tmp["rolling_vol"] = tmp["ret_1"].rolling(vol_window).std()
+    tmp["rolling_vol_annualized"] = tmp["rolling_vol"] * (252**0.5)
+
+    vfig = go.Figure()
+    vfig.add_trace(go.Scatter(x=tmp["timestamp"], y=tmp["rolling_vol"], mode="lines", name=f"Vol ({vol_window})"))
+    vfig.add_trace(
+        go.Scatter(x=tmp["timestamp"], y=tmp["rolling_vol_annualized"], mode="lines", name=f"Vol Annualized ({vol_window})")
+    )
+    vfig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
+    vfig.update_layout(title=f"{product} volatility in selected range", xaxis_title="Timestamp", yaxis_title="Volatility")
+    st.plotly_chart(vfig, use_container_width=True)
+
+    vol_point = tmp[tmp["timestamp"] <= selected_ts].tail(1)
+    if not vol_point.empty:
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Timestamp", int(vol_point.iloc[0]["timestamp"]))
+        p2.metric("Rolling Vol", f"{float(vol_point.iloc[0]['rolling_vol']) if vol_point.iloc[0]['rolling_vol'] == vol_point.iloc[0]['rolling_vol'] else 0.0:.6f}")
+        p3.metric(
+            "Annualized Vol",
+            f"{float(vol_point.iloc[0]['rolling_vol_annualized']) if vol_point.iloc[0]['rolling_vol_annualized'] == vol_point.iloc[0]['rolling_vol_annualized'] else 0.0:.6f}",
+        )
