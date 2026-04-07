@@ -40,7 +40,9 @@ df = add_forward_returns(df, horizons)
 feature_cols = default_feature_columns(df)
 product_trades = trades_df[trades_df["symbol"] == product].copy() if not trades_df.empty else trades_df.copy()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+    ["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment", "Market Prices"]
+)
 
 with tab1:
     st.subheader("Data Health")
@@ -165,3 +167,50 @@ with tab5:
             st.write("Engine logs at this moment")
             st.text_area("sandboxLog", str(log_row.iloc[0].get("sandboxlog", "")), height=80)
             st.text_area("lambdaLog", str(log_row.iloc[0].get("lambdalog", "")), height=80)
+
+with tab6:
+    st.subheader("Bid / Ask / Mid Price Timeline")
+    show_l2 = st.checkbox("Show level-2 bid/ask", value=True, key="show_l2")
+    show_l3 = st.checkbox("Show level-3 bid/ask", value=False, key="show_l3")
+
+    price_fig = go.Figure()
+    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["mid_price"], mode="lines", name="Mid Price"))
+    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_1"], mode="lines", name="Bid L1"))
+    price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_1"], mode="lines", name="Ask L1"))
+
+    if show_l2:
+        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_2"], mode="lines", name="Bid L2"))
+        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_2"], mode="lines", name="Ask L2"))
+    if show_l3:
+        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["bid_price_3"], mode="lines", name="Bid L3"))
+        price_fig.add_trace(go.Scatter(x=df["timestamp"], y=df["ask_price_3"], mode="lines", name="Ask L3"))
+
+    price_fig.update_layout(
+        title=f"{product} order-book prices over time",
+        xaxis_title="Timestamp",
+        yaxis_title="Price",
+        hovermode="x unified",
+    )
+    st.plotly_chart(price_fig, use_container_width=True)
+
+    st.subheader("Depth at Selected Timestamp")
+    depth_point = df[df["timestamp"] <= selected_ts].tail(1)
+    if not depth_point.empty:
+        row = depth_point.iloc[0]
+        depth_fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=["Bid L1", "Bid L2", "Bid L3", "Ask L1", "Ask L2", "Ask L3"],
+                    y=[
+                        row["bid_volume_1"] if row["bid_volume_1"] is not None else 0,
+                        row["bid_volume_2"] if row["bid_volume_2"] is not None else 0,
+                        row["bid_volume_3"] if row["bid_volume_3"] is not None else 0,
+                        row["ask_volume_1"] if row["ask_volume_1"] is not None else 0,
+                        row["ask_volume_2"] if row["ask_volume_2"] is not None else 0,
+                        row["ask_volume_3"] if row["ask_volume_3"] is not None else 0,
+                    ],
+                )
+            ]
+        )
+        depth_fig.update_layout(title=f"{product} depth snapshot @ t={int(row['timestamp'])}", yaxis_title="Volume")
+        st.plotly_chart(depth_fig, use_container_width=True)

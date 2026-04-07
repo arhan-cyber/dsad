@@ -75,4 +75,8 @@ def default_feature_columns(df: pd.DataFrame) -> list[str]:
             "ask_volume_3",
         ]
     )
-    return [c for c in df.columns if c not in excluded and pd.api.types.is_numeric_dtype(df[c])]
+    return [
+        c
+        for c in df.columns
+        if c not in excluded and not c.startswith("fwd_ret_") and pd.api.types.is_numeric_dtype(df[c])
+    ]

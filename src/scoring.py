@@ -24,12 +24,16 @@ def score_signals(df: pd.DataFrame, feature_cols: list[str], horizons: list[int]
     for feature in feature_cols:
         for h in horizons:
             target_col = f"fwd_ret_{h}"
+            if feature == target_col:
+                continue
             sample = df[[feature, target_col]].dropna()
             if sample.empty:
                 rows.append({"feature": feature, "horizon": h, "ic": np.nan, "hit_rate": np.nan, "samples": 0})
                 continue
-            ic = float(sample[feature].corr(sample[target_col]))
-            hr = _hit_rate(sample[feature], sample[target_col])
+            signal = sample.iloc[:, 0]
+            target = sample.iloc[:, 1]
+            ic = float(signal.corr(target))
+            hr = _hit_rate(signal, target)
             rows.append({"feature": feature, "horizon": h, "ic": ic, "hit_rate": hr, "samples": int(len(sample))})
     out = pd.DataFrame(rows)
     out["abs_ic"] = out["ic"].abs()

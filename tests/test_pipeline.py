@@ -57,3 +57,13 @@ def test_full_json_payload_parses_trade_history_and_logs():
     assert len(parsed["trades"]) == 2
     assert set(parsed["trades"]["side"].tolist()) == {"BUY", "SELL"}
     assert len(parsed["logs"]) == 1
+
+
+def test_scoring_ignores_forward_return_columns_as_features():
+    df = load_csv(io.StringIO(CSV))
+    feat_df = add_features(df)
+    feat_df = add_forward_returns(feat_df, [1])
+    feature_cols = default_feature_columns(feat_df)
+    assert "fwd_ret_1" not in feature_cols
+    scores = score_signals(feat_df, feature_cols + ["fwd_ret_1"], [1])
+    assert "fwd_ret_1" not in set(scores["feature"].tolist())
