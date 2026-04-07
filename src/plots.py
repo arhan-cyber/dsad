@@ -18,4 +18,10 @@ def correlation_heatmap(df: pd.DataFrame, cols: list[str], title: str = "Feature
 
 
 def scatter(df: pd.DataFrame, x: str, y: str, color: str | None = None, title: str | None = None):
-    return px.scatter(df, x=x, y=y, color=color, trendline="ols", title=title)
+    try:
+        import statsmodels.api  # noqa: F401
+
+        return px.scatter(df, x=x, y=y, color=color, trendline="ols", title=title)
+    except ModuleNotFoundError:
+        # Fallback keeps diagnostics usable when optional OLS dependency is absent.
+        return px.scatter(df, x=x, y=y, color=color, title=title)
