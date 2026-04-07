@@ -1,6 +1,6 @@
 import io
 
-from src.data_loader import load_csv
+from src.data_loader import load_csv, load_simulation_data
 from src.features import add_features, default_feature_columns
 from src.scoring import add_forward_returns, score_signals
 
@@ -47,3 +47,13 @@ def test_json_wrapped_log_with_activities_log_payload():
     assert len(df) == 2
     assert set(df["product"].unique()) == {"TOMATOES", "EMERALDS"}
     assert df["mid_price"].notna().all()
+
+
+def test_full_json_payload_parses_trade_history_and_logs():
+    wrapped = """{"submissionId":"abc-123","activitiesLog":"day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss\\n-1;0;TOMATOES;4999;6;4998;19;;;5013;6;5014;19;;;5006.0;0.0","logs":[{"sandboxLog":"s","lambdaLog":"l","timestamp":0}],"tradeHistory":[{"timestamp":10,"buyer":"SUBMISSION","seller":"","symbol":"TOMATOES","currency":"XIRECS","price":4998.0,"quantity":3},{"timestamp":11,"buyer":"","seller":"SUBMISSION","symbol":"TOMATOES","currency":"XIRECS","price":5002.0,"quantity":2}]}"""
+    parsed = load_simulation_data(io.StringIO(wrapped))
+    assert parsed["meta"]["submissionId"] == "abc-123"
+    assert len(parsed["snapshots"]) == 1
+    assert len(parsed["trades"]) == 2
+    assert set(parsed["trades"]["side"].tolist()) == {"BUY", "SELL"}
+    assert len(parsed["logs"]) == 1

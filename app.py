@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import streamlit as st
+import plotly.graph_objects as go
 
-from src.data_loader import load_csv
+from src.data_loader import load_simulation_data
 from src.features import add_features, default_feature_columns
 from src.plots import correlation_heatmap, histogram, scatter, time_series
 from src.scoring import add_forward_returns, bucketed_forward_returns, score_signals
@@ -16,7 +17,19 @@ if uploaded is None:
     st.info("Upload a .log/.csv file to begin.")
     st.stop()
 
-base_df = load_csv(uploaded)
+parsed = load_simulation_data(uploaded)
+base_df = parsed["snapshots"]
+trades_df = parsed["trades"]
+engine_logs_df = parsed["logs"]
+meta = parsed["meta"]
+
+if base_df.empty:
+    st.error("No order-book snapshots could be parsed from this file.")
+    st.stop()
+
+if meta.get("submissionId"):
+    st.caption(f"Submission ID: `{meta['submissionId']}`")
+
 products = sorted(base_df["product"].unique().tolist())
 horizons = st.sidebar.multiselect("Forward horizons (ticks)", [1, 5, 10, 20, 50, 100], default=[1, 5, 10, 20, 50])
 product = st.sidebar.selectbox("Product", products)
@@ -25,8 +38,9 @@ df = base_df[base_df["product"] == product].copy()
 df = add_features(df)
 df = add_forward_returns(df, horizons)
 feature_cols = default_feature_columns(df)
+product_trades = trades_df[trades_df["symbol"] == product].copy() if not trades_df.empty else trades_df.copy()
 
-tab1, tab2, tab3, tab4 = st.tabs(["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment"])
 
 with tab1:
     st.subheader("Data Health")
@@ -67,3 +81,87 @@ with tab4:
         file_name=f"alpha_scores_{product}.csv",
         mime="text/csv",
     )
+
+with tab5:
+    st.subheader("Trades and Point-in-Time Stats")
+    ts_values = sorted(df["timestamp"].dropna().astype(int).unique().tolist())
+    selected_ts = st.select_slider("Timestamp", options=ts_values, value=ts_values[0])
+
+    # Use latest snapshot at or before selected timestamp for stable point-in-time state.
+    snap_at_ts = df[df["timestamp"] <= selected_ts].tail(1)
+    if snap_at_ts.empty:
+        snap_at_ts = df.head(1)
+    snap = snap_at_ts.iloc[0]
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Mid Price", f"{float(snap['mid_price']):.2f}")
+    c2.metric("Spread", f"{float(snap['ask_price_1'] - snap['bid_price_1']):.2f}")
+    c3.metric("PnL", f"{float(snap['profit_and_loss']):.2f}")
+    l1_imb = snap["l1_imbalance"] if "l1_imbalance" in snap_at_ts.columns else 0.0
+    c4.metric("L1 Imbalance", f"{float(l1_imb):.3f}")
+
+    st.write(
+        f"Book snapshot at t={int(snap['timestamp'])}: "
+        f"Bid1 {snap['bid_price_1']} x {snap['bid_volume_1']} | "
+        f"Ask1 {snap['ask_price_1']} x {snap['ask_volume_1']}"
+    )
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df["timestamp"], y=df["mid_price"], mode="lines", name="Mid Price"))
+    if not product_trades.empty:
+        buys = product_trades[product_trades["side"] == "BUY"]
+        sells = product_trades[product_trades["side"] == "SELL"]
+        others = product_trades[product_trades["side"] == "OTHER"]
+        if not buys.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=buys["timestamp"],
+                    y=buys["price"],
+                    mode="markers",
+                    name="Buy Trades",
+                    marker=dict(symbol="triangle-up", size=9, color="green"),
+                    text=buys["quantity"],
+                    hovertemplate="BUY @ %{y}<br>Qty=%{text}<br>t=%{x}<extra></extra>",
+                )
+            )
+        if not sells.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=sells["timestamp"],
+                    y=sells["price"],
+                    mode="markers",
+                    name="Sell Trades",
+                    marker=dict(symbol="triangle-down", size=9, color="red"),
+                    text=sells["quantity"],
+                    hovertemplate="SELL @ %{y}<br>Qty=%{text}<br>t=%{x}<extra></extra>",
+                )
+            )
+        if not others.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=others["timestamp"],
+                    y=others["price"],
+                    mode="markers",
+                    name="Other Trades",
+                    marker=dict(size=7, color="gray"),
+                    text=others["quantity"],
+                    hovertemplate="OTHER @ %{y}<br>Qty=%{text}<br>t=%{x}<extra></extra>",
+                )
+            )
+    fig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
+    fig.update_layout(title=f"{product} mid-price with trades", xaxis_title="Timestamp", yaxis_title="Price")
+    st.plotly_chart(fig, use_container_width=True)
+
+    if not product_trades.empty:
+        recent_trades = product_trades[(product_trades["timestamp"] >= selected_ts - 1000) & (product_trades["timestamp"] <= selected_ts + 1000)]
+        st.write("Trades in +/-1000 timestamp window")
+        st.dataframe(recent_trades[["timestamp", "side", "price", "quantity", "buyer", "seller"]], use_container_width=True)
+    else:
+        st.info(f"No tradeHistory entries found for {product}.")
+
+    if not engine_logs_df.empty:
+        log_row = engine_logs_df[engine_logs_df["timestamp"] <= selected_ts].tail(1)
+        if not log_row.empty:
+            st.write("Engine logs at this moment")
+            st.text_area("sandboxLog", str(log_row.iloc[0].get("sandboxlog", "")), height=80)
+            st.text_area("lambdaLog", str(log_row.iloc[0].get("lambdalog", "")), height=80)

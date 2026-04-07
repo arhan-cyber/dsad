@@ -59,9 +59,9 @@ def _extract_table_text(raw_text: str) -> str:
     return raw_text
 
 
-def load_csv(file_obj: BinaryIO | io.BytesIO | TextIO) -> pd.DataFrame:
-    raw_text = _read_text(file_obj)
-    table_text = _extract_table_text(raw_text)
+def _parse_snapshots(table_text: str) -> pd.DataFrame:
+    if not table_text.strip():
+        return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
     # Logs are semicolon-separated, but we keep comma fallback for compatibility.
     df = pd.read_csv(io.StringIO(table_text), sep=";|,", engine="python", on_bad_lines="skip")
@@ -95,3 +95,61 @@ def load_csv(file_obj: BinaryIO | io.BytesIO | TextIO) -> pd.DataFrame:
 
     df = df.sort_values(["product", "day", "timestamp"]).reset_index(drop=True)
     return df
+
+
+def _normalize_trades(trades_raw: list[dict]) -> pd.DataFrame:
+    if not trades_raw:
+        return pd.DataFrame(columns=["timestamp", "symbol", "price", "quantity", "buyer", "seller", "side", "currency"])
+    trades = pd.DataFrame(trades_raw).copy()
+    trades.columns = [_normalize_column_name(c) for c in trades.columns]
+    for col in ["timestamp", "price", "quantity"]:
+        if col in trades.columns:
+            trades[col] = pd.to_numeric(trades[col], errors="coerce")
+    if "symbol" not in trades.columns:
+        trades["symbol"] = ""
+    if "buyer" not in trades.columns:
+        trades["buyer"] = ""
+    if "seller" not in trades.columns:
+        trades["seller"] = ""
+    if "currency" not in trades.columns:
+        trades["currency"] = ""
+    trades["side"] = "OTHER"
+    trades.loc[trades["buyer"] == "SUBMISSION", "side"] = "BUY"
+    trades.loc[trades["seller"] == "SUBMISSION", "side"] = "SELL"
+    return trades.sort_values("timestamp").reset_index(drop=True)
+
+
+def _normalize_logs(logs_raw: list[dict]) -> pd.DataFrame:
+    if not logs_raw:
+        return pd.DataFrame(columns=["timestamp", "sandboxlog", "lambdalog"])
+    logs = pd.DataFrame(logs_raw).copy()
+    logs.columns = [_normalize_column_name(c) for c in logs.columns]
+    if "timestamp" in logs.columns:
+        logs["timestamp"] = pd.to_numeric(logs["timestamp"], errors="coerce")
+    return logs.sort_values("timestamp").reset_index(drop=True)
+
+
+def load_simulation_data(file_obj: BinaryIO | io.BytesIO | TextIO) -> dict[str, pd.DataFrame | dict]:
+    raw_text = _read_text(file_obj)
+    payload: dict = {}
+    table_text = raw_text
+    stripped = raw_text.lstrip()
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+            activities_log = payload.get("activitiesLog")
+            if isinstance(activities_log, str):
+                table_text = activities_log
+        except json.JSONDecodeError:
+            payload = {}
+            table_text = raw_text
+
+    snapshots = _parse_snapshots(table_text)
+    trades = _normalize_trades(payload.get("tradeHistory", [])) if payload else _normalize_trades([])
+    logs = _normalize_logs(payload.get("logs", [])) if payload else _normalize_logs([])
+    meta = {"submissionId": payload.get("submissionId")} if payload else {}
+    return {"snapshots": snapshots, "trades": trades, "logs": logs, "meta": meta}
+
+
+def load_csv(file_obj: BinaryIO | io.BytesIO | TextIO) -> pd.DataFrame:
+    return load_simulation_data(file_obj)["snapshots"]
