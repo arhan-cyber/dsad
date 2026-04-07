@@ -1,7 +1,7 @@
 import io
 
 from src.data_loader import load_csv, load_simulation_data
-from src.features import add_features, default_feature_columns
+from src.features import add_features, add_trade_flow_features, default_feature_columns
 from src.scoring import add_forward_returns, score_signals
 
 
@@ -67,3 +67,22 @@ def test_scoring_ignores_forward_return_columns_as_features():
     assert "fwd_ret_1" not in feature_cols
     scores = score_signals(feat_df, feature_cols + ["fwd_ret_1"], [1])
     assert "fwd_ret_1" not in set(scores["feature"].tolist())
+
+
+def test_advanced_and_trade_flow_features_present():
+    df = load_csv(io.StringIO(CSV))
+    feat_df = add_features(df)
+    trades = io.StringIO(
+        """timestamp,buyer,seller,symbol,currency,price,quantity,side
+1000,SUBMISSION,,PEARLS,X,100.0,3,BUY
+1001,,SUBMISSION,PEARLS,X,100.1,2,SELL
+"""
+    )
+    import pandas as pd
+
+    trade_df = pd.read_csv(trades)
+    feat_df = add_trade_flow_features(feat_df, trade_df)
+    assert "ofi_l1" in feat_df.columns
+    assert "book_convexity" in feat_df.columns
+    assert "vol_of_vol_20" in feat_df.columns
+    assert "trade_ofi_20" in feat_df.columns

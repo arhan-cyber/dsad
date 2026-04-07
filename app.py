@@ -4,7 +4,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from src.data_loader import load_simulation_data
-from src.features import add_features, default_feature_columns
+from src.features import add_features, add_trade_flow_features, default_feature_columns
 from src.plots import correlation_heatmap, histogram, scatter, time_series
 from src.scoring import add_forward_returns, bucketed_forward_returns, score_signals
 
@@ -49,8 +49,10 @@ if df_range.empty:
     df_range = df.copy()
 
 df = add_features(df)
+df = add_trade_flow_features(df, product_trades)
 df = add_forward_returns(df, horizons)
 df_range = add_features(df_range)
+df_range = add_trade_flow_features(df_range, product_trades_range)
 df_range = add_forward_returns(df_range, horizons)
 feature_cols = default_feature_columns(df)
 product_trades = trades_df[trades_df["symbol"] == product].copy() if not trades_df.empty else trades_df.copy()
