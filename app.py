@@ -130,6 +130,17 @@ with tab5:
         f"Bid1 {snap['bid_price_1']} x {snap['bid_volume_1']} | "
         f"Ask1 {snap['ask_price_1']} x {snap['ask_volume_1']}"
     )
+    st.write(
+        f"Best Bid: {snap['bid_price_1']} x {snap['bid_volume_1']} | "
+        f"Best Ask: {snap['ask_price_1']} x {snap['ask_volume_1']}"
+    )
+
+    book_rows = [
+        {"level": "L1", "bid_price": snap["bid_price_1"], "bid_volume": snap["bid_volume_1"], "ask_price": snap["ask_price_1"], "ask_volume": snap["ask_volume_1"]},
+        {"level": "L2", "bid_price": snap["bid_price_2"], "bid_volume": snap["bid_volume_2"], "ask_price": snap["ask_price_2"], "ask_volume": snap["ask_volume_2"]},
+        {"level": "L3", "bid_price": snap["bid_price_3"], "bid_volume": snap["bid_volume_3"], "ask_price": snap["ask_price_3"], "ask_volume": snap["ask_volume_3"]},
+    ]
+    st.dataframe(book_rows, use_container_width=True)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price"))
