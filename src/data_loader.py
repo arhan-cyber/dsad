@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from typing import BinaryIO, TextIO
 
 import pandas as pd
@@ -31,9 +32,39 @@ def _normalize_column_name(name: str) -> str:
     return name.strip().replace("\\", "").lower()
 
 
+def _read_text(file_obj: BinaryIO | io.BytesIO | TextIO) -> str:
+    if hasattr(file_obj, "getvalue"):
+        raw = file_obj.getvalue()
+        if isinstance(raw, bytes):
+            return raw.decode("utf-8", errors="replace")
+        return str(raw)
+    if hasattr(file_obj, "read"):
+        raw = file_obj.read()
+        if isinstance(raw, bytes):
+            return raw.decode("utf-8", errors="replace")
+        return str(raw)
+    raise TypeError("Unsupported file object type.")
+
+
+def _extract_table_text(raw_text: str) -> str:
+    stripped = raw_text.lstrip()
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+            activities_log = payload.get("activitiesLog")
+            if isinstance(activities_log, str) and activities_log.strip():
+                return activities_log
+        except json.JSONDecodeError:
+            pass
+    return raw_text
+
+
 def load_csv(file_obj: BinaryIO | io.BytesIO | TextIO) -> pd.DataFrame:
+    raw_text = _read_text(file_obj)
+    table_text = _extract_table_text(raw_text)
+
     # Logs are semicolon-separated, but we keep comma fallback for compatibility.
-    df = pd.read_csv(file_obj, sep=";|,", engine="python")
+    df = pd.read_csv(io.StringIO(table_text), sep=";|,", engine="python", on_bad_lines="skip")
     df.columns = [_normalize_column_name(c) for c in df.columns]
     missing = [c for c in EXPECTED_COLUMNS if c not in df.columns]
     if missing:

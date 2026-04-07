@@ -39,3 +39,11 @@ def test_sparse_depth_and_negative_day_log_rows():
     assert int(df.loc[0, "day"]) == -1
     assert df["bid_price_3"].isna().all()
     assert df["ask_volume_3"].isna().all()
+
+
+def test_json_wrapped_log_with_activities_log_payload():
+    wrapped = """{"submissionId":"abc","activitiesLog":"day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss\\n-1;0;TOMATOES;4999;6;4998;19;;;5013;6;5014;19;;;5006.0;0.0\\n-1;0;EMERALDS;9992;15;9990;30;;;10008;15;10010;30;;;10000.0;0.0"}"""
+    df = load_csv(io.StringIO(wrapped))
+    assert len(df) == 2
+    assert set(df["product"].unique()) == {"TOMATOES", "EMERALDS"}
+    assert df["mid_price"].notna().all()
