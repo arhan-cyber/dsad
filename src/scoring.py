@@ -26,10 +26,19 @@ def score_signals(df: pd.DataFrame, feature_cols: list[str], horizons: list[int]
             target_col = f"fwd_ret_{h}"
             if feature == target_col:
                 continue
+            if feature not in df.columns or target_col not in df.columns:
+                rows.append({"feature": feature, "horizon": h, "ic": np.nan, "hit_rate": np.nan, "samples": 0})
+                continue
             sample = df[[feature, target_col]].dropna()
             if sample.empty:
                 rows.append({"feature": feature, "horizon": h, "ic": np.nan, "hit_rate": np.nan, "samples": 0})
                 continue
+            # If duplicated column labels exist, use the first matching numeric series.
+            if isinstance(sample.iloc[:, 0], pd.DataFrame) or isinstance(sample.iloc[:, 1], pd.DataFrame):
+                sample = sample.loc[:, ~sample.columns.duplicated()]
+                if feature not in sample.columns or target_col not in sample.columns:
+                    rows.append({"feature": feature, "horizon": h, "ic": np.nan, "hit_rate": np.nan, "samples": 0})
+                    continue
             signal = sample.iloc[:, 0]
             target = sample.iloc[:, 1]
             ic = float(signal.corr(target))

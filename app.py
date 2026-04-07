@@ -49,12 +49,6 @@ if df_range.empty:
     df_range = df.copy()
 
 df = add_features(df)
-df = add_trade_flow_features(df, product_trades)
-df = add_forward_returns(df, horizons)
-df_range = add_features(df_range)
-df_range = add_trade_flow_features(df_range, product_trades_range)
-df_range = add_forward_returns(df_range, horizons)
-feature_cols = default_feature_columns(df)
 product_trades = trades_df[trades_df["symbol"] == product].copy() if not trades_df.empty else trades_df.copy()
 product_trades_range = (
     product_trades[
@@ -63,6 +57,12 @@ product_trades_range = (
     if not product_trades.empty
     else product_trades.copy()
 )
+df = add_trade_flow_features(df, product_trades)
+df = add_forward_returns(df, horizons)
+df_range = add_features(df_range)
+df_range = add_trade_flow_features(df_range, product_trades_range)
+df_range = add_forward_returns(df_range, horizons)
+feature_cols = default_feature_columns(df)
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     ["Data Health", "Feature Explorer", "Diagnostics", "Leaderboard", "Trades & Moment", "Market Prices", "Volatility"]
