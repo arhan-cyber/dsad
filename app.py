@@ -158,8 +158,10 @@ with tab5:
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Mid Price", f"{float(snap['mid_price']):.2f}")
-    c2.metric("Best Bid", f"{float(snap['bid_price_1']):.2f}", delta=f"Vol {int(snap['bid_volume_1']) if snap['bid_volume_1'] == snap['bid_volume_1'] else 0}")
-    c3.metric("Best Ask", f"{float(snap['ask_price_1']):.2f}", delta=f"Vol {int(snap['ask_volume_1']) if snap['ask_volume_1'] == snap['ask_volume_1'] else 0}")
+    bid_vol_1 = int(snap["bid_volume_1"]) if pd.notna(snap["bid_volume_1"]) else 0
+    ask_vol_1 = int(snap["ask_volume_1"]) if pd.notna(snap["ask_volume_1"]) else 0
+    c2.metric("Best Bid", f"{float(snap['bid_price_1']):.2f}", delta=f"Vol {bid_vol_1}")
+    c3.metric("Best Ask", f"{float(snap['ask_price_1']):.2f}", delta=f"Vol {ask_vol_1}")
     c4.metric("Spread", f"{float(snap['ask_price_1'] - snap['bid_price_1']):.2f}")
     c5.metric("PnL", f"{float(snap['profit_and_loss']):.2f}")
     l1_imb = snap["l1_imbalance"] if "l1_imbalance" in snap_at_ts.columns else 0.0
@@ -301,6 +303,54 @@ with tab5:
     fig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
     fig.update_layout(title=f"{product} mid-price with trades", xaxis_title="Timestamp", yaxis_title="Price")
     st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.subheader("Signal Overlays (toggle on/off)")
+    show_imbalance = st.checkbox("Show order book imbalance", value=False, key="show_imbalance")
+    show_momentum = st.checkbox("Show momentum indicator", value=False, key="show_momentum")
+    show_trend = st.checkbox("Show moving-average trend", value=False, key="show_trend")
+
+    if show_imbalance:
+        imb_fig = go.Figure()
+        if "l1_imbalance" in df_range.columns:
+            imb_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["l1_imbalance"], mode="lines", name="L1 Imbalance"))
+        if "depth_imbalance_l1_l3" in df_range.columns:
+            imb_fig.add_trace(
+                go.Scatter(
+                    x=df_range["timestamp"],
+                    y=df_range["depth_imbalance_l1_l3"],
+                    mode="lines",
+                    name="Depth Imbalance (L1-L3)",
+                )
+            )
+        imb_fig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
+        imb_fig.update_layout(title=f"{product} order book imbalance", xaxis_title="Timestamp", yaxis_title="Imbalance")
+        st.plotly_chart(imb_fig, use_container_width=True)
+
+    if show_momentum:
+        mom_fig = go.Figure()
+        if "mom_5" in df_range.columns:
+            mom_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mom_5"], mode="lines", name="Momentum(5)"))
+        if "mom_20" in df_range.columns:
+            mom_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mom_20"], mode="lines", name="Momentum(20)"))
+        mom_fig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
+        mom_fig.update_layout(title=f"{product} momentum indicators", xaxis_title="Timestamp", yaxis_title="Return")
+        st.plotly_chart(mom_fig, use_container_width=True)
+
+    if show_trend:
+        trend_fig = go.Figure()
+        trend_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price", opacity=0.35))
+        if "sma_5" in df_range.columns:
+            trend_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["sma_5"], mode="lines", name="SMA(5)"))
+        if "sma_20" in df_range.columns:
+            trend_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["sma_20"], mode="lines", name="SMA(20)"))
+        if "ema_8" in df_range.columns:
+            trend_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ema_8"], mode="lines", name="EMA(8)"))
+        if "ema_21" in df_range.columns:
+            trend_fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ema_21"], mode="lines", name="EMA(21)"))
+        trend_fig.add_vline(x=selected_ts, line_dash="dash", line_color="orange")
+        trend_fig.update_layout(title=f"{product} moving-average trend", xaxis_title="Timestamp", yaxis_title="Price")
+        st.plotly_chart(trend_fig, use_container_width=True)
 
     if not product_trades.empty:
         recent_trades = product_trades[(product_trades["timestamp"] >= selected_ts - 1000) & (product_trades["timestamp"] <= selected_ts + 1000)]
