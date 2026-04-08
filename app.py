@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 import plotly.graph_objects as go
+import pandas as pd
 
 from src.data_loader import load_simulation_data
 from src.features import add_features, add_trade_flow_features, default_feature_columns
@@ -134,6 +135,21 @@ with tab5:
     st.subheader("Trades and Point-in-Time Stats")
     selected_ts = global_ts
 
+    st.divider()
+    st.subheader("Anomaly Highlighting (Δ vs Previous)")
+    highlight_moves = st.checkbox("Highlight large moves", value=False, key="highlight_moves")
+    move_threshold = st.number_input(
+        "Threshold (points)",
+        min_value=0.0,
+        max_value=1e9,
+        value=5.0,
+        step=1.0,
+        key="move_threshold",
+    )
+    show_mid_moves = st.checkbox("Mid moves > threshold", value=True, key="show_mid_moves")
+    show_bid_moves = st.checkbox("Best Bid moves > threshold", value=True, key="show_bid_moves")
+    show_ask_moves = st.checkbox("Best Ask moves > threshold", value=True, key="show_ask_moves")
+
     # Use latest snapshot at or before selected timestamp for stable point-in-time state.
     snap_at_ts = df[df["timestamp"] <= selected_ts].tail(1)
     if snap_at_ts.empty:
@@ -170,6 +186,78 @@ with tab5:
     fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price"))
     fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["bid_price_1"], mode="lines", name="Best Bid"))
     fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ask_price_1"], mode="lines", name="Best Ask"))
+
+    if highlight_moves and len(df_range) > 1:
+        dfv = df_range.sort_values("timestamp").copy()
+        mid_delta = dfv["mid_price"].diff()
+        bid_delta = dfv["bid_price_1"].diff()
+        ask_delta = dfv["ask_price_1"].diff()
+
+        mid_mask = mid_delta.abs() > move_threshold if show_mid_moves else pd.Series(False, index=dfv.index)
+        bid_mask = bid_delta.abs() > move_threshold if show_bid_moves else pd.Series(False, index=dfv.index)
+        ask_mask = ask_delta.abs() > move_threshold if show_ask_moves else pd.Series(False, index=dfv.index)
+
+        if show_mid_moves and mid_mask.any():
+            anom_mid = dfv[mid_mask]
+            fig.add_trace(
+                go.Scatter(
+                    x=anom_mid["timestamp"],
+                    y=anom_mid["mid_price"],
+                    mode="markers",
+                    name="Mid jumps",
+                    marker=dict(symbol="x", size=10, color="purple"),
+                    hovertemplate="MID Δ=%{customdata:.2f}<br>t=%{x}<extra></extra>",
+                    customdata=mid_delta[mid_mask].to_numpy(),
+                )
+            )
+        if show_bid_moves and bid_mask.any():
+            anom_bid = dfv[bid_mask]
+            fig.add_trace(
+                go.Scatter(
+                    x=anom_bid["timestamp"],
+                    y=anom_bid["bid_price_1"],
+                    mode="markers",
+                    name="Bid jumps",
+                    marker=dict(symbol="x", size=10, color="green"),
+                    hovertemplate="BID Δ=%{customdata:.2f}<br>t=%{x}<extra></extra>",
+                    customdata=bid_delta[bid_mask].to_numpy(),
+                )
+            )
+        if show_ask_moves and ask_mask.any():
+            anom_ask = dfv[ask_mask]
+            fig.add_trace(
+                go.Scatter(
+                    x=anom_ask["timestamp"],
+                    y=anom_ask["ask_price_1"],
+                    mode="markers",
+                    name="Ask jumps",
+                    marker=dict(symbol="x", size=10, color="red"),
+                    hovertemplate="ASK Δ=%{customdata:.2f}<br>t=%{x}<extra></extra>",
+                    customdata=ask_delta[ask_mask].to_numpy(),
+                )
+            )
+
+        combined = pd.DataFrame(
+            {
+                "timestamp": dfv["timestamp"],
+                "mid_delta": mid_delta,
+                "bid_delta": bid_delta,
+                "ask_delta": ask_delta,
+            }
+        )
+        combined_mask = pd.Series(False, index=dfv.index)
+        if show_mid_moves:
+            combined_mask = combined_mask | (mid_delta.abs() > move_threshold)
+        if show_bid_moves:
+            combined_mask = combined_mask | (bid_delta.abs() > move_threshold)
+        if show_ask_moves:
+            combined_mask = combined_mask | (ask_delta.abs() > move_threshold)
+        anomalies = combined[combined_mask].copy()
+        if not anomalies.empty:
+            st.dataframe(
+                anomalies[["timestamp", "mid_delta", "bid_delta", "ask_delta"]].round(4),
+                use_container_width=True,
+            )
     if not product_trades_range.empty:
         buys = product_trades_range[product_trades_range["side"] == "BUY"]
         sells = product_trades_range[product_trades_range["side"] == "SELL"]
