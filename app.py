@@ -37,13 +37,35 @@ product = st.sidebar.selectbox("Product", products)
 df = base_df[base_df["product"] == product].copy()
 ts_values = sorted(df["timestamp"].dropna().astype(int).unique().tolist())
 default_ts = ts_values[0]
-global_ts = st.sidebar.select_slider("Global timestamp", options=ts_values, value=default_ts, key="global_timestamp")
-global_ts_range = st.sidebar.select_slider(
-    "Global timestamp range",
-    options=ts_values,
-    value=(ts_values[0], ts_values[-1]),
-    key="global_timestamp_range",
+min_ts = ts_values[0]
+max_ts = ts_values[-1]
+global_ts = st.sidebar.number_input(
+    "Global timestamp",
+    min_value=int(min_ts),
+    max_value=int(max_ts),
+    value=int(default_ts),
+    step=1,
+    key="global_timestamp",
 )
+range_start = st.sidebar.number_input(
+    "Global timestamp range start",
+    min_value=int(min_ts),
+    max_value=int(max_ts),
+    value=int(min_ts),
+    step=1,
+    key="global_timestamp_range_start",
+)
+range_end = st.sidebar.number_input(
+    "Global timestamp range end",
+    min_value=int(min_ts),
+    max_value=int(max_ts),
+    value=int(max_ts),
+    step=1,
+    key="global_timestamp_range_end",
+)
+if range_start > range_end:
+    range_start, range_end = range_end, range_start
+global_ts_range = (int(range_start), int(range_end))
 df_range = df[(df["timestamp"] >= global_ts_range[0]) & (df["timestamp"] <= global_ts_range[1])].copy()
 if df_range.empty:
     df_range = df.copy()
@@ -146,6 +168,8 @@ with tab5:
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["mid_price"], mode="lines", name="Mid Price"))
+    fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["bid_price_1"], mode="lines", name="Best Bid"))
+    fig.add_trace(go.Scatter(x=df_range["timestamp"], y=df_range["ask_price_1"], mode="lines", name="Best Ask"))
     if not product_trades_range.empty:
         buys = product_trades_range[product_trades_range["side"] == "BUY"]
         sells = product_trades_range[product_trades_range["side"] == "SELL"]
